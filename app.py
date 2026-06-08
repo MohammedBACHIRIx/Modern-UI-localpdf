@@ -467,7 +467,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <footer class="footer">
         <div>LocalPDF Utility — Fast, secure, and private.</div>
         <div style="margin-top: var(--space-xs);">
+            Originally developed by Virgilio Borges | 
             <a href="https://github.com/virgiliojr94" target="_blank">GitHub</a> | 
+            <a href="https://www.linkedin.com/in/virgiliojunior94/" target="_blank">LinkedIn</a> |
             <a href="mailto:virgilio.junior94@gmail.com">Contact</a>
         </div>
     </footer>

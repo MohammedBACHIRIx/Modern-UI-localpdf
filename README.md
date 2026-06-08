@@ -112,6 +112,10 @@ All files are processed **locally** on your machine. No data is sent to external
 
 MIT License — free to use and modify.
 
+## 🙌 Credits
+
+This project was originally developed by **[Virgilio Borges (virgiliojr94)](https://github.com/virgiliojr94)**. The modern UI overhaul, English translation, and Python 3.14 compatibility were built on top of their excellent foundational work. 
+
 ---
 
 ⭐ If this project was useful to you, consider giving it a star on GitHub!
