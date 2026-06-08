@@ -5,7 +5,10 @@ import tempfile
 import zipfile
 
 import fitz  # PyMuPDF
-import ghostscript
+try:
+    import ghostscript
+except RuntimeError:
+    ghostscript = None
 import openpyxl
 from flask import (
     Flask,
@@ -39,225 +42,547 @@ def allowed_file(filename):
 
 
 # Template HTML
-HTML_TEMPLATE = """
-<!DOCTYPE html>
-<html lang="pt-BR">
+HTML_TEMPLATE = """<!DOCTYPE html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LocalPDF.io</title>
+    <title>LocalPDF - Academic PDF Utility</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: Arial, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }
-        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
-        .header { text-align: center; color: white; margin-bottom: 40px; }
-        .header h1 { font-size: 3em; margin-bottom: 10px; }
-        .header p { font-size: 1.2em; opacity: 0.9; }
-        .tools-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 40px; }
-        .tool-card { background: white; border-radius: 15px; padding: 30px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.1); transition: transform 0.3s ease; cursor: pointer; }
-        .tool-card:hover { transform: translateY(-5px); }
-        .tool-card h3 { color: #333; margin-bottom: 15px; font-size: 1.5em; }
-        .tool-card p { color: #666; margin-bottom: 20px; }
-        .upload-area { border: 2px dashed #ddd; border-radius: 10px; padding: 40px; text-align: center; background: #f9f9f9; margin: 20px 0; transition: all 0.3s ease; }
-        .upload-area:hover { border-color: #667eea; background: #f0f4ff; }
-        .upload-area.dragover { border-color: #667eea; background: #e8f0ff; }
-        .file-input { display: none; }
-        .upload-btn { background: #667eea; color: white; padding: 12px 30px; border: none; border-radius: 25px; cursor: pointer; font-size: 1.1em; transition: background 0.3s ease; }
-        .upload-btn:hover { background: #5a6fd8; }
-        .convert-btn { background: #28a745; color: white; padding: 15px 40px; border: none; border-radius: 25px; cursor: pointer; font-size: 1.2em; margin-top: 20px; transition: background 0.3s ease; }
-        .convert-btn:hover { background: #1e7e34; }
-        .convert-btn:disabled { background: #ccc; cursor: not-allowed; }
-        .file-list { margin-top: 20px; }
-        .file-item { background: #f8f9fa; padding: 10px 15px; margin: 5px 0; border-radius: 5px; display: flex; justify-content: space-between; align-items: center; }
-        .progress { width: 100%; background: #f0f0f0; border-radius: 10px; margin: 20px 0; }
-        .progress-bar { height: 20px; background: #667eea; border-radius: 10px; width: 0%; transition: width 0.3s ease; }
-        .result { margin-top: 20px; padding: 20px; background: #d4edda; border-radius: 10px; color: #155724; }
-        .error { margin-top: 20px; padding: 20px; background: #f8d7da; border-radius: 10px; color: #721c24; }
-        .hidden { display: none; }
-        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); }
-        .modal-content { background: white; margin: 5% auto; padding: 30px; width: 80%; max-width: 600px; border-radius: 15px; position: relative; }
-        .close { position: absolute; right: 20px; top: 15px; font-size: 30px; cursor: pointer; color: #aaa; }
-        .close:hover { color: #000; }
-        .back-btn { background: #6c757d; color: white; padding: 10px 20px; border: none; border-radius: 25px; cursor: pointer; margin-bottom: 20px; }
-        .back-btn:hover { background: #545b62; }
-        .footer { text-align: center; color: white; margin-top: 40px; padding: 20px 0; border-top: 1px solid #ddd; }
-        .footer p { margin-bottom: 10px; }
-        .footer a { color: #667eea; text-decoration: none; }
-        .footer a:hover { text-decoration: underline; }
-        .social-icons { margin-top: 10px; }
-        .social-icons a { margin: 0 10px; color: #667eea; font-size: 1.2em; }
+        :root {
+            /* Palette: Clean Academic/Product */
+            --bg-body: #f8f9fa;
+            --bg-surface: #ffffff;
+            --bg-surface-hover: #f1f3f5;
+            --text-main: #212529;
+            --text-muted: #495057;
+            --border-color: #dee2e6;
+            --accent-primary: #339af0;
+            --accent-primary-hover: #228be6;
+            --accent-success: #40c057;
+            --accent-success-hover: #2b8a3e;
+            --accent-danger: #fa5252;
+            
+            --space-xs: 4px;
+            --space-sm: 8px;
+            --space-md: 16px;
+            --space-lg: 24px;
+            --space-xl: 32px;
+            --space-2xl: 48px;
+            --space-3xl: 64px;
+
+            --radius-sm: 4px;
+            --radius-md: 6px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            line-height: 1.5;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .navbar {
+            background-color: var(--bg-surface);
+            border-bottom: 1px solid var(--border-color);
+            padding: var(--space-md) var(--space-xl);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .brand {
+            font-size: 1.25rem;
+            font-weight: 600;
+            letter-spacing: -0.01em;
+            color: var(--text-main);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+        }
+
+        .brand svg {
+            width: 20px;
+            height: 20px;
+            color: var(--accent-primary);
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: var(--space-2xl) var(--space-lg);
+            flex: 1;
+            width: 100%;
+        }
+
+        .header {
+            margin-bottom: var(--space-2xl);
+        }
+
+        .header h1 {
+            font-size: 2rem;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+            margin-bottom: var(--space-xs);
+        }
+
+        .header p {
+            color: var(--text-muted);
+            font-size: 1.05rem;
+        }
+
+        .tools-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: var(--space-md);
+        }
+
+        .tool-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: var(--space-lg);
+            cursor: pointer;
+            transition: all 0.15s ease;
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-sm);
+        }
+
+        .tool-card:hover {
+            border-color: var(--accent-primary);
+            background-color: var(--bg-surface-hover);
+        }
+
+        .tool-header {
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+        }
+
+        .tool-icon {
+            color: var(--accent-primary);
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .tool-icon svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        .tool-card h3 {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+
+        .tool-card p {
+            font-size: 0.875rem;
+            color: var(--text-muted);
+        }
+
+        /* Tool View Setup */
+        .hidden {
+            display: none !important;
+        }
+
+        .view-header {
+            display: flex;
+            align-items: center;
+            gap: var(--space-md);
+            margin-bottom: var(--space-xl);
+            padding-bottom: var(--space-md);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .back-btn {
+            background: transparent;
+            color: var(--text-muted);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            padding: var(--space-xs) var(--space-sm);
+            cursor: pointer;
+            font-size: 0.875rem;
+            display: flex;
+            align-items: center;
+            gap: var(--space-xs);
+            transition: all 0.15s ease;
+        }
+
+        .back-btn:hover {
+            background: var(--bg-surface-hover);
+            color: var(--text-main);
+        }
+
+        .workspace {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: var(--space-xl);
+        }
+
+        .workspace-header {
+            margin-bottom: var(--space-lg);
+        }
+
+        .workspace-header h2 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: var(--space-xs);
+        }
+
+        .workspace-header p {
+            color: var(--text-muted);
+            font-size: 0.875rem;
+        }
+
+        .upload-area {
+            border: 1px dashed var(--border-color);
+            border-radius: var(--radius-md);
+            padding: var(--space-3xl) var(--space-xl);
+            text-align: center;
+            background: var(--bg-body);
+            transition: all 0.15s ease;
+            cursor: pointer;
+            margin-bottom: var(--space-lg);
+        }
+
+        .upload-area:hover, .upload-area.dragover {
+            border-color: var(--accent-primary);
+            background: rgba(51, 154, 240, 0.05);
+        }
+
+        .upload-icon {
+            color: var(--text-muted);
+            margin-bottom: var(--space-sm);
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .btn-primary {
+            background: var(--accent-primary);
+            color: white;
+            border: none;
+            border-radius: var(--radius-sm);
+            padding: var(--space-sm) var(--space-lg);
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.15s ease;
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-primary-hover);
+        }
+
+        .btn-primary:disabled {
+            background: var(--border-color);
+            cursor: not-allowed;
+            color: var(--text-muted);
+        }
+
+        .btn-success {
+            background: var(--accent-success);
+        }
+        .btn-success:hover {
+            background: var(--accent-success-hover);
+        }
+
+        .file-list {
+            margin-bottom: var(--space-lg);
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-sm);
+        }
+
+        .file-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: var(--bg-body);
+            border: 1px solid var(--border-color);
+            padding: var(--space-sm) var(--space-md);
+            border-radius: var(--radius-sm);
+            font-size: 0.875rem;
+        }
+
+        .file-info {
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+        }
+
+        .btn-remove {
+            background: transparent;
+            color: var(--accent-danger);
+            border: none;
+            cursor: pointer;
+            font-size: 0.875rem;
+        }
+        .btn-remove:hover {
+            text-decoration: underline;
+        }
+
+        .progress {
+            width: 100%;
+            background: var(--border-color);
+            border-radius: var(--radius-sm);
+            height: 4px;
+            margin: var(--space-md) 0;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: var(--accent-primary);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .alert {
+            padding: var(--space-md);
+            border-radius: var(--radius-sm);
+            margin-top: var(--space-md);
+            font-size: 0.875rem;
+        }
+
+        .alert-success {
+            background: rgba(64, 192, 87, 0.1);
+            color: var(--accent-success-hover);
+            border: 1px solid rgba(64, 192, 87, 0.2);
+        }
+
+        .alert-error {
+            background: rgba(250, 82, 82, 0.1);
+            color: var(--accent-danger);
+            border: 1px solid rgba(250, 82, 82, 0.2);
+        }
+
+        .footer {
+            border-top: 1px solid var(--border-color);
+            padding: var(--space-lg) var(--space-xl);
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            background: var(--bg-surface);
+        }
+        
+        .footer a {
+            color: var(--text-muted);
+            text-decoration: none;
+            margin: 0 var(--space-xs);
+        }
+        
+        .footer a:hover {
+            color: var(--text-main);
+        }
+
+        .action-row {
+            display: flex;
+            justify-content: flex-end;
+            gap: var(--space-sm);
+            margin-top: var(--space-md);
+            border-top: 1px solid var(--border-color);
+            padding-top: var(--space-md);
+        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>🌟 LocalPDF.io</h1>
-            <p>Todas as ferramentas PDF que você precisa em um só lugar</p>
-        </div>
+    <nav class="navbar">
+        <a href="#" class="brand" onclick="showHome()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+            LocalPDF
+        </a>
+    </nav>
 
+    <div class="container">
+        <!-- Home View -->
         <div id="home-view">
-            <div class="tools-grid">
-                <div class="tool-card" onclick="showTool('pdf-to-images')">
-                    <h3>🖼️ PDF para Imagens</h3>
-                    <p>Converta páginas PDF em imagens JPG ou PNG</p>
-                </div>
-                <div class="tool-card" onclick="showTool('images-to-pdf')">
-                    <h3>📄 Imagens para PDF</h3>
-                    <p>Combine várias imagens em um único PDF</p>
-                </div>
-                <div class="tool-card" onclick="showTool('merge-pdf')">
-                    <h3>🔗 Mesclar PDFs</h3>
-                    <p>Combine vários PDFs em um documento único</p>
-                </div>
-                <div class="tool-card" onclick="showTool('split-pdf')">
-                    <h3>✂️ Dividir PDF</h3>
-                    <p>Extraia páginas específicas do seu PDF</p>
-                </div>
-                <div class="tool-card" onclick="showTool('compress-pdf')">
-                    <h3>📦 Comprimir PDF</h3>
-                    <p>Reduza o tamanho do seu arquivo PDF</p>
-                </div>
-                <div class="tool-card" onclick="showTool('pdf-to-pdfa')">
-                    <h3>🔒 PDF para PDF/A</h3>
-                    <p>Padronize seu PDF para arquivamento (PDF/A)</p>
-                </div>
-                <div class="tool-card" onclick="showTool('word-to-pdf')">
-                    <h3>📝 Word para PDF</h3>
-                    <p>Converta um ou mais documentos DOCX para PDF</p>
-                </div>
-                <div class="tool-card" onclick="showTool('excel-to-pdf')">
-                    <h3>📊 Excel para PDF</h3>
-                    <p>Converta planilhas XLSX para PDF</p>
-                </div>
-                <div class="tool-card" onclick="showTool('txt-to-pdf')">
-                    <h3>📄 TXT para PDF</h3>
-                    <p>Converta arquivos de texto simples para PDF</p>
-                </div>
-                <div class="tool-card" onclick="showTool('pdf-to-word')">
-                    <h3>🔄 PDF para Word</h3>
-                    <p>Converta documentos PDF para Word (.docx) editável</p>
-                </div>
-                <div class="tool-card" onclick="showTool('ocr-pdf')">
-                    <h3>🔍 OCR em PDF</h3>
-                    <p>Extraia texto de PDFs e imagens escaneadas com OCR</p>
-                </div>
+            <div class="header">
+                <h1>Local PDF Tools</h1>
+                <p>Fast, offline document manipulation. No cloud uploads required.</p>
+            </div>
+
+            <div class="tools-grid" id="tools-grid-container">
+                <!-- Injected via JS -->
             </div>
         </div>
 
-        <!-- Tool Views -->
+        <!-- Tool View -->
         <div id="tool-views" class="hidden">
-            <button class="back-btn" onclick="showHome()">← Voltar</button>
-            <div class="tool-card">
-                <h3 id="tool-title"></h3>
-                <p id="tool-description"></p>
+            <div class="view-header">
+                <button class="back-btn" onclick="showHome()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                    Back to tools
+                </button>
+            </div>
+
+            <div class="workspace">
+                <div class="workspace-header">
+                    <h2 id="tool-title">Tool Title</h2>
+                    <p id="tool-description">Description of what the tool does.</p>
+                </div>
 
                 <div class="upload-area" id="upload-area" onclick="document.getElementById('file-input').click()">
-                    <input type="file" id="file-input" class="file-input" multiple accept=".pdf,.docx,.jpg,.jpeg,.png,.txt,.xlsx">
-                    <p>📁 Clique aqui ou arraste arquivos para fazer upload</p>
-                    <button class="upload-btn">Escolher Arquivos</button>
+                    <input type="file" id="file-input" class="file-input" multiple>
+                    <div class="upload-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                    </div>
+                    <p>Click to select files or drag them here</p>
+                    <p style="font-size: 0.75rem; margin-top: 4px; color: var(--text-muted);" id="tool-accept-text"></p>
                 </div>
 
                 <div id="file-list" class="file-list"></div>
 
-                <div id="options" class="hidden">
-                    <!-- Opções específicas para cada ferramenta -->
+                <div class="action-row">
+                    <button id="convert-btn" class="btn-primary btn-success hidden" onclick="convertFiles()">Process Files</button>
                 </div>
-
-                <button id="convert-btn" class="convert-btn hidden" onclick="convertFiles()">Converter</button>
 
                 <div id="progress" class="progress hidden">
                     <div id="progress-bar" class="progress-bar"></div>
                 </div>
+                <div style="text-align: center; font-size: 0.75rem; color: var(--text-muted);" id="progress-text" class="hidden">Processing locally...</div>
 
                 <div id="result" class="hidden"></div>
             </div>
         </div>
-
-        <div class="footer">
-            <p>Desenvolvido por Virgilio Borges</p>
-            <div>
-                <a href="mailto:virgilio.junior94@gmail.com">✉️ virgilio.junior94@gmail.com</a> |
-                <a href="tel:+5595981121572">📱 (95) 98112-1572</a>
-            </div>
-            <div class="social-icons">
-                <a href="https://github.com/virgiliojr94" target="_blank">🔗 GitHub</a>
-                <a href="https://www.linkedin.com/in/virgiliojunior94/" target="_blank">🔗 LinkedIn</a>
-            </div>
-        </div>
     </div>
 
+    <footer class="footer">
+        <div>LocalPDF Utility — Fast, secure, and private.</div>
+        <div style="margin-top: var(--space-xs);">
+            <a href="https://github.com/virgiliojr94" target="_blank">GitHub</a> | 
+            <a href="mailto:virgilio.junior94@gmail.com">Contact</a>
+        </div>
+    </footer>
+
     <script>
-        let currentTool = '';
-        let uploadedFiles = [];
+        const ICONS = {
+            image: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>',
+            file: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>',
+            merge: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>',
+            split: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><line x1="20" y1="4" x2="8.12" y2="15.88"></line><line x1="14.47" y1="14.48" x2="20" y2="20"></line><line x1="8.12" y1="8.12" x2="12" y2="12"></line></svg>',
+            compress: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>',
+            lock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>',
+            text: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="17" y1="10" x2="3" y2="10"></line><line x1="21" y1="6" x2="3" y2="6"></line><line x1="21" y1="14" x2="3" y2="14"></line><line x1="17" y1="18" x2="3" y2="18"></line></svg>',
+            refresh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>',
+            search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>'
+        };
 
         const tools = {
             'pdf-to-images': {
-                title: '🖼️ PDF para Imagens',
-                description: 'Converta cada página do seu PDF em imagens separadas',
+                title: 'PDF to Images',
+                description: 'Convert each page of your PDF into separate images',
                 accept: '.pdf',
-                multiple: false
+                multiple: false,
+                icon: 'image'
             },
             'images-to-pdf': {
-                title: '📄 Imagens para PDF',
-                description: 'Combine múltiplas imagens em um único arquivo PDF',
+                title: 'Images to PDF',
+                description: 'Combine multiple images into a single PDF file',
                 accept: '.jpg,.jpeg,.png',
-                multiple: true
+                multiple: true,
+                icon: 'file'
             },
             'merge-pdf': {
-                title: '🔗 Mesclar PDFs',
-                description: 'Combine vários arquivos PDF em um documento único',
+                title: 'Merge PDFs',
+                description: 'Combine multiple PDF files into a single document',
                 accept: '.pdf',
-                multiple: true
+                multiple: true,
+                icon: 'merge'
             },
             'split-pdf': {
-                title: '✂️ Dividir PDF',
-                description: 'Extraia páginas específicas do seu PDF',
+                title: 'Split PDF',
+                description: 'Extract specific pages from your PDF',
                 accept: '.pdf',
-                multiple: false
+                multiple: false,
+                icon: 'split'
             },
             'compress-pdf': {
-                title: '📦 Comprimir PDF',
-                description: 'Reduza o tamanho do arquivo PDF mantendo a qualidade',
+                title: 'Compress PDF',
+                description: 'Reduce the PDF file size while maintaining quality',
                 accept: '.pdf',
-                multiple: false
+                multiple: false,
+                icon: 'compress'
             },
             'pdf-to-pdfa': {
-                title: '🔒 PDF para PDF/A',
-                description: 'Converta PDFs para o padrão de arquivamento PDF/A-1b',
+                title: 'PDF to PDF/A',
+                description: 'Convert PDFs to the PDF/A-1b archiving standard',
                 accept: '.pdf',
-                multiple: true
+                multiple: true,
+                icon: 'lock'
             },
             'word-to-pdf': {
-                title: '📝 Word para PDF',
-                description: 'Converta documentos Word (.docx) para PDF - aceita múltiplos arquivos',
+                title: 'Word to PDF',
+                description: 'Convert Word documents (.docx) to PDF',
                 accept: '.docx',
-                multiple: true
+                multiple: true,
+                icon: 'file'
             },
             'excel-to-pdf': {
-                title: '📊 Excel para PDF',
-                description: 'Converta planilhas Excel (.xlsx) para PDF',
+                title: 'Excel to PDF',
+                description: 'Convert Excel spreadsheets (.xlsx) to PDF',
                 accept: '.xlsx',
-                multiple: false
+                multiple: false,
+                icon: 'file'
             },
             'txt-to-pdf': {
-                title: '📄 TXT para PDF',
-                description: 'Converta arquivos de texto simples (.txt) para PDF',
+                title: 'TXT to PDF',
+                description: 'Convert plain text files (.txt) to PDF',
                 accept: '.txt',
-                multiple: false
+                multiple: false,
+                icon: 'text'
             },
             'pdf-to-word': {
-                title: '🔄 PDF para Word',
-                description: 'Converta seus documentos PDF para Word (.docx) editável',
+                title: 'PDF to Word',
+                description: 'Convert your PDF documents to editable Word (.docx)',
                 accept: '.pdf',
-                multiple: false
+                multiple: false,
+                icon: 'refresh'
             },
             'ocr-pdf': {
-                title: '🔍 OCR em PDF',
-                description: 'Extraia texto de PDFs e imagens escaneadas usando reconhecimento óptico de caracteres (Tesseract)',
+                title: 'OCR on PDF',
+                description: 'Extract text from PDFs and scanned images using OCR',
                 accept: '.pdf,.jpg,.jpeg,.png',
-                multiple: false
+                multiple: false,
+                icon: 'search'
             }
         };
+
+        // Render Home Grid
+        const grid = document.getElementById('tools-grid-container');
+        for (const [id, tool] of Object.entries(tools)) {
+            const el = document.createElement('div');
+            el.className = 'tool-card';
+            el.onclick = () => showTool(id);
+            el.innerHTML = `
+                <div class="tool-header">
+                    <div class="tool-icon">${ICONS[tool.icon]}</div>
+                    <h3>${tool.title}</h3>
+                </div>
+                <p>${tool.description}</p>
+            `;
+            grid.appendChild(el);
+        }
+
+        let currentTool = '';
+        let uploadedFiles = [];
 
         function showTool(toolName) {
             currentTool = toolName;
@@ -269,6 +594,9 @@ HTML_TEMPLATE = """
             document.getElementById('tool-description').innerText = tool.description;
             document.getElementById('file-input').accept = tool.accept;
             document.getElementById('file-input').multiple = tool.multiple;
+            
+            let formats = tool.accept.split(',').map(ext => ext.toUpperCase().replace('.', '')).join(', ');
+            document.getElementById('tool-accept-text').innerText = `Accepted formats: ${formats}`;
 
             uploadedFiles = [];
             updateFileList();
@@ -293,8 +621,11 @@ HTML_TEMPLATE = """
 
             fileList.innerHTML = uploadedFiles.map((file, index) => `
                 <div class="file-item">
-                    <span>📄 ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)</span>
-                    <button onclick="removeFile(${index})" style="background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer;">Remover</button>
+                    <div class="file-info">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>
+                        <span>${file.name} <span style="color: var(--text-muted)">(${(file.size / 1024 / 1024).toFixed(2)} MB)</span></span>
+                    </div>
+                    <button class="btn-remove" onclick="removeFile(${index})">Remove</button>
                 </div>
             `).join('');
 
@@ -309,9 +640,9 @@ HTML_TEMPLATE = """
         function hideResult() {
             document.getElementById('result').classList.add('hidden');
             document.getElementById('progress').classList.add('hidden');
+            document.getElementById('progress-text').classList.add('hidden');
         }
 
-        // Upload de arquivos
         document.getElementById('file-input').addEventListener('change', function(e) {
             const files = Array.from(e.target.files);
             if (tools[currentTool].multiple) {
@@ -322,7 +653,6 @@ HTML_TEMPLATE = """
             updateFileList();
         });
 
-        // Drag and drop
         const uploadArea = document.getElementById('upload-area');
         uploadArea.addEventListener('dragover', function(e) {
             e.preventDefault();
@@ -357,7 +687,15 @@ HTML_TEMPLATE = """
             formData.append('tool', currentTool);
 
             document.getElementById('progress').classList.remove('hidden');
-            document.getElementById('convert-btn').disabled = true;
+            document.getElementById('progress-text').classList.remove('hidden');
+            const btn = document.getElementById('convert-btn');
+            btn.disabled = true;
+            btn.innerText = 'Processing...';
+            
+            // Fake progress animation
+            const bar = document.getElementById('progress-bar');
+            bar.style.width = '30%';
+            setTimeout(() => { bar.style.width = '70%'; }, 500);
 
             try {
                 const response = await fetch('/convert', {
@@ -366,6 +704,7 @@ HTML_TEMPLATE = """
                 });
 
                 if (response.ok) {
+                    bar.style.width = '100%';
                     const blob = await response.blob();
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
@@ -376,17 +715,22 @@ HTML_TEMPLATE = """
                     window.URL.revokeObjectURL(url);
                     document.body.removeChild(a);
 
-                    document.getElementById('result').innerHTML = '<h4>✅ Sucesso!</h4><p>Arquivo convertido e baixado com sucesso!</p>';
+                    document.getElementById('result').innerHTML = '<div class="alert alert-success"><strong>Success!</strong> File processed and downloaded successfully.</div>';
                     document.getElementById('result').classList.remove('hidden');
                 } else {
-                    throw new Error('Erro na conversão');
+                    throw new Error('Conversion error');
                 }
             } catch (error) {
-                document.getElementById('result').innerHTML = '<h4>❌ Erro!</h4><p>Ocorreu um erro durante a conversão. Tente novamente.</p>';
+                document.getElementById('result').innerHTML = '<div class="alert alert-error"><strong>Error!</strong> An error occurred while processing. Please try again.</div>';
                 document.getElementById('result').classList.remove('hidden');
             } finally {
-                document.getElementById('progress').classList.add('hidden');
-                document.getElementById('convert-btn').disabled = false;
+                setTimeout(() => {
+                    document.getElementById('progress').classList.add('hidden');
+                    document.getElementById('progress-text').classList.add('hidden');
+                    bar.style.width = '0%';
+                }, 1000);
+                btn.disabled = false;
+                btn.innerText = 'Process Files';
             }
         }
     </script>
@@ -508,13 +852,13 @@ def txt_to_pdf(file, temp_dir):
 @app.route("/convert", methods=["POST"])
 def convert():
     if "files" not in request.files:
-        return jsonify({"error": "Nenhum arquivo enviado"}), 400
+        return jsonify({"error": "No file uploaded"}), 400
 
     files = request.files.getlist("files")
     tool = request.form.get("tool")
 
     if not files or files[0].filename == "":
-        return jsonify({"error": "Nenhum arquivo selecionado"}), 400
+        return jsonify({"error": "No file selected"}), 400
 
     # Validação de extensão dos arquivos enviados
     for f in files:
